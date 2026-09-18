@@ -1,0 +1,9 @@
+# Herramienta cross-platform: normalizar a LF para que el repo sea igual en Windows,
+# macOS y Linux. Sin esto, Windows reescribe todo a CRLF y los diffs se ensucian.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.webp binary
+*.ico binary
+*.woff2 binary

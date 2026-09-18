@@ -1,0 +1,37 @@
+# ── Nunca subir esto ──────────────────────────────────────────────────────────
+# chrome-profile/ guarda una sesion de Google YA LOGUEADA (cookies incluidas).
+# Subirla seria regalar el acceso a la cuenta con la que se corre el tool.
+chrome-profile/
+*.chrome-profile/
+.google-oauth-cli/
+
+# Credenciales
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+client_secret*.json
+.porkbun*
+
+# Dependencias y basura
+node_modules/
+package-lock.json
+npm-debug.log*
+*.log
+oauth-setup.log
+
+# Sistema
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Salidas del tool
+screenshots/
+out/
+*.png
+*.jpg
+*.webp
+!docs/**/*.png

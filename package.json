@@ -1,0 +1,60 @@
+{
+  "name": "google-oauth-cli",
+  "version": "1.0.0",
+  "description": "Create, rotate, publish and inspect Google OAuth 2.0 credentials from the terminal by automating the Google Cloud Console with Playwright. No gcloud OAuth screen, no manual clicking.",
+  "keywords": [
+    "google-oauth",
+    "oauth2",
+    "oauth-client",
+    "google-cloud-console",
+    "playwright-core",
+    "browser-automation",
+    "cli",
+    "client-id",
+    "client-secret",
+    "consent-screen",
+    "auth-js",
+    "next-auth",
+    "publish-oauth-app",
+    "test-users"
+  ],
+  "homepage": "https://github.com/Z1Code/google-oauth-cli#readme",
+  "bugs": {
+    "url": "https://github.com/Z1Code/google-oauth-cli/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Z1Code/google-oauth-cli.git"
+  },
+  "author": "Z1Code",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "google-oauth-cli": "cli.mjs",
+    "gauth": "cli.mjs"
+  },
+  "main": "lib/consent.mjs",
+  "exports": {
+    ".": "./lib/consent.mjs",
+    "./chrome": "./lib/chrome.mjs",
+    "./console": "./lib/console.mjs"
+  },
+  "files": [
+    "cli.mjs",
+    "lib/",
+    "docs/",
+    "README.md",
+    "llms.txt"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node cli.mjs",
+    "status": "node cli.mjs status",
+    "check": "node cli.mjs --help"
+  },
+  "dependencies": {
+    "playwright-core": "^1.59.1"
+  }
+}

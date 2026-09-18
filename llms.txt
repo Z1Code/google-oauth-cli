@@ -1,0 +1,95 @@
+# google-oauth-cli
+
+> Command-line tool that creates, rotates, publishes and inspects Google OAuth 2.0
+> credentials by automating the Google Cloud Console with Playwright. No API exists for the
+> OAuth consent screen, so this drives the web UI instead.
+
+## What it is
+
+`google-oauth-cli` (binary names: `google-oauth-cli`, `gauth`) is a Node.js CLI that automates
+the Google Cloud Console's **Google Auth Platform** screens — OAuth clients, client secrets, the
+consent screen branding form, the test-user allowlist, and app publishing.
+
+It exists because Google exposes **no API and no `gcloud` command** for the OAuth consent screen.
+`gcloud` can create a project and enable APIs, but the client secret, branding, test users and the
+publish button are only reachable through the console UI.
+
+## When to use it
+
+- Setting up Google Sign-In (Auth.js / NextAuth, Passport, plain OAuth) for a new project.
+- Rotating a leaked or lost `clientSecret` without clicking through the console.
+- Debugging "Google login does not work" when the app logs show nothing at all.
+- Publishing an app out of Google's **Testing** state to remove the 100-user cap.
+- Adding test users to a consent screen that was left with zero (which silently blocks all logins).
+
+## Install
+
+```bash
+npm install -g google-oauth-cli
+# or
+npx google-oauth-cli --help
+```
+
+Requirements: Node.js 18+, Google Chrome (or Edge/Chromium), and a Google account with Editor or
+Owner access to the GCP project.
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `create` | Create an OAuth Web Client (client ID + secret) |
+| `renew` | Add a new secret to an existing client |
+| `diagnose` | Report publish state, branding gaps, test users, and a fix per blocker |
+| `status` | Publish state only |
+| `branding` | Read or fill the branding page (home page, privacy policy, terms, developer contact) |
+| `publish` | Publish the app to leave the 100-user testing cap |
+| `test-users list\|add\|remove` | Manage the test-user allowlist |
+| `open [screen]` | Open a console screen in the automated Chrome |
+| `kill` | Kill the automation Chrome if it hangs |
+
+All commands accept `--project <id>` and `--json`. Output is a single JSON object on stdout;
+progress goes to stderr; exit code is non-zero on failure.
+
+## Key facts an agent must know
+
+1. **A consent screen in Testing with zero test users rejects every login, before the request
+   reaches the application.** The app logs stay empty. This is the single most common cause of a
+   "broken" Google login. Fix with `gauth test-users add --emails a@x.com,b@y.com`.
+2. **Publishing requires a complete branding page**, including publicly reachable privacy policy
+   and terms of service URLs. If those pages do not exist, the `publish` button stays disabled and
+   saving the branding form silently does not persist.
+3. **Testing mode has a hard cap of 100 users over the entire lifetime of the app**, not per year.
+4. **`renew` does not invalidate the old secret.** The previous secret keeps working until it is
+   deleted in the console, so rotation can be done without downtime.
+5. **A gcloud project is required first.** If the project does not exist:
+   `gcloud projects create <id> && gcloud config set project <id>`.
+6. **The Chrome profile holds a live Google session.** Never commit it. It is gitignored.
+7. **Endpoints used**, if you need to build something adjacent:
+   - Console screens: `https://console.cloud.google.com/auth/{overview,branding,audience,clients,data-access}?project=<id>`
+   - Google OAuth discovery: `https://accounts.google.com/.well-known/openid-configuration`
+   - Auth.js v5 callback: `https://<domain>/api/auth/callback/google`
+8. **Environment variable names** that consumers typically need:
+   - Auth.js v5 / NextAuth: `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`
+   - Generic: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`
+
+## Environment variables
+
+`GOOGLE_OAUTH_PROJECT`, `GOOGLE_OAUTH_PROFILE`, `GOOGLE_OAUTH_HOME`, `GOOGLE_OAUTH_PORT`,
+`BROWSER_PATH`, `DEBUG`.
+
+## Implementation notes
+
+- Drives your installed Chrome over the Chrome DevTools Protocol (`--remote-debugging-port`),
+  so `playwright install` is not needed.
+- The console is a heavyweight Angular SPA. `networkidle` never fires; the tool uses
+  `domcontentloaded` plus a fixed settle time.
+- Saving is triggered with a JS click, because a Playwright `getByRole(...).click()` on the
+  Material dialog does not always register the save.
+- Console form fields have no `aria-label`; they are located by surrounding text.
+
+## Links
+
+- Repository: https://github.com/Z1Code/google-oauth-cli
+- Source: `cli.mjs`, `lib/chrome.mjs`, `lib/console.mjs`, `lib/consent.mjs`, `lib/oauth-client.mjs`
+- Gotchas: `docs/TROUBLESHOOTING.md`
+- License: MIT
