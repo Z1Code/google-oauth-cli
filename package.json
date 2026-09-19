@@ -31,7 +31,8 @@
   "type": "module",
   "bin": {
     "google-oauth-cli": "cli.mjs",
-    "gauth": "cli.mjs"
+    "gauth": "cli.mjs",
+    "google-oauth-mcp": "mcp/server.mjs"
   },
   "main": "lib/consent.mjs",
   "exports": {
@@ -42,8 +43,12 @@
   "files": [
     "cli.mjs",
     "lib/",
+    "mcp/",
+    "tools/",
     "docs/",
     "README.md",
+    "SKILL.md",
+    "AGENTS.md",
     "llms.txt"
   ],
   "engines": {
@@ -52,9 +57,12 @@
   "scripts": {
     "start": "node cli.mjs",
     "status": "node cli.mjs status",
+    "mcp": "node mcp/server.mjs",
     "check": "node cli.mjs --help"
   },
   "dependencies": {
-    "playwright-core": "^1.59.1"
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "playwright-core": "^1.59.1",
+    "zod": "^4.6.5"
   }
 }

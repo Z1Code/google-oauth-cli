@@ -174,6 +174,77 @@ gauth diagnose --project my-app-492517 --json | jq '.blockers[].code'
 
 The blocker `code` values are stable, so you can branch on them instead of parsing prose.
 
+### Which integration to use
+
+Not every AI client can run shell commands, so the right entry point depends on the client:
+
+| Client | Use | Why |
+|---|---|---|
+| Claude Code, Codex, Cursor, Copilot, Gemini CLI | **`AGENTS.md`** + the CLI | They can run commands, so the CLI is the simplest path |
+| Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Zed | **MCP server** (stdio) | They cannot run shell commands; MCP exposes the CLI as tools |
+| ChatGPT (app or API) | **`tools/tools.json`** | ChatGPT connectors expect HTTP, not stdio — use the tool schemas instead |
+| Your own agent over the API | **`tools/tools.json`** | Ready-made function/tool schemas |
+
+Shipping this as a **CLI first** is deliberate: any agent that can run a command can already
+use it correctly, with no protocol layer to maintain and no server to keep alive.
+
+### MCP server
+
+Exposes the CLI as 10 MCP tools over stdio. It is a thin adapter — each tool shells out to
+the CLI and returns its JSON — so it cannot drift from the CLI's behaviour.
+
+```bash
+npx -y -p google-oauth-cli google-oauth-mcp
+```
+
+**Claude Desktop** (`claude_desktop_config.json`) and most stdio clients:
+
+```json
+{
+  "mcpServers": {
+    "google-oauth": {
+      "command": "npx",
+      "args": ["-y", "-p", "google-oauth-cli", "google-oauth-mcp"]
+    }
+  }
+}
+```
+
+**Claude Code:**
+
+```bash
+claude mcp add google-oauth -- npx -y -p google-oauth-cli google-oauth-mcp
+```
+
+Tools exposed: `gauth_diagnose`, `gauth_publish_status`, `gauth_list_test_users`,
+`gauth_add_test_users`, `gauth_remove_test_users`, `gauth_get_branding`,
+`gauth_fill_branding`, `gauth_publish`, `gauth_create_client`, `gauth_renew_secret`.
+
+Verify the server speaks the protocol correctly:
+
+```bash
+node test/mcp-smoke.mjs
+```
+
+**ChatGPT:** connectors are HTTP-based, so the stdio server above does not apply. Use
+`tools/tools.json` — it has ready-made schemas for the **OpenAI**, **Anthropic** and
+**Gemini** APIs, mapping 1:1 onto the CLI commands.
+
+### Claude skill
+
+`SKILL.md` is a drop-in [Claude skill](https://docs.claude.com/en/docs/claude-code/skills).
+Copy it to your skills directory and Claude picks it up automatically for any Google OAuth
+task:
+
+```bash
+mkdir -p ~/.claude/skills/google-oauth-cli
+cp SKILL.md ~/.claude/skills/google-oauth-cli/
+```
+
+### Anything else
+
+`llms.txt` is a condensed, machine-oriented summary of this project — point an LLM at it.
+
 ---
 
 ## How it works

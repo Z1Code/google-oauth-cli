@@ -1,0 +1,258 @@
+{
+  "$comment": [
+    "Tool/function schemas for calling google-oauth-cli from an LLM API.",
+    "Each tool maps 1:1 onto a CLI command and returns that command's JSON on stdout.",
+    "'openai' works with the Chat Completions and Responses APIs (type: function).",
+    "'anthropic' works with the Messages API (tools: [...]).",
+    "'gemini' works with functionDeclarations.",
+    "Every tool needs a 'project' argument. The CLI must be installed and the user must",
+    "have signed in once, interactively, before any tool call can succeed."
+  ],
+  "openai": [
+    {
+      "type": "function",
+      "function": {
+        "name": "gauth_diagnose",
+        "description": "Full health check of a Google OAuth setup: publish state, branding gaps, test users, and a specific fix for every blocker found. Call this FIRST for any 'Google login not working' issue. Returns blockers[] with stable codes: NO_TEST_USERS, NOT_PUBLISHED, BRANDING_URLS_MISSING, BRANDING_CONTACT_MISSING.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "project": { "type": "string", "description": "GCP project ID, e.g. my-app-492517" }
+          },
+          "required": ["project"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "gauth_create_client",
+        "description": "Create a Google OAuth 2.0 Web Client (client ID and secret), configuring the consent screen if it does not exist yet. Returns { clientId, clientSecret }. May take up to 3 minutes on first run while the user signs in to Google.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "project": { "type": "string", "description": "GCP project ID. Must already exist." },
+            "name": { "type": "string", "description": "Human-readable app name shown on the consent screen" },
+            "redirect_uri": { "type": "string", "description": "OAuth redirect URI. For Auth.js v5: https://<domain>/api/auth/callback/google" },
+            "email": { "type": "string", "description": "Support email shown on the consent screen" }
+          },
+          "required": ["project", "name", "redirect_uri", "email"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "gauth_renew_secret",
+        "description": "Add a new client secret to an existing OAuth client and return it. Use when the secret was lost, leaked, or needs rotating. The previous secret keeps working until it is deleted in the console, so there is no downtime.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "project": { "type": "string", "description": "GCP project ID" }
+          },
+          "required": ["project"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "gauth_publish_status",
+        "description": "Read whether the OAuth app is in Testing or Production, the test-user limit, and whether the Publish button is currently enabled.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "project": { "type": "string", "description": "GCP project ID" }
+          },
+          "required": ["project"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "gauth_list_test_users",
+        "description": "List the email addresses currently allowed to sign in while the app is in Testing mode. An empty list means every login is rejected before it reaches the application.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "project": { "type": "string", "description": "GCP project ID" }
+          },
+          "required": ["project"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "gauth_add_test_users",
+        "description": "Add email addresses to the consent screen's test-user allowlist. REQUIRED while the app is in Testing mode: with zero test users, Google rejects every login before the request reaches the application, leaving the application logs empty.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "project": { "type": "string", "description": "GCP project ID" },
+            "emails": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Email addresses to allow. Each must be a Google account."
+            }
+          },
+          "required": ["project", "emails"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "gauth_remove_test_users",
+        "description": "Remove email addresses from the consent screen's test-user allowlist.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "project": { "type": "string", "description": "GCP project ID" },
+            "emails": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Email addresses to remove"
+            }
+          },
+          "required": ["project", "emails"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "gauth_fill_branding",
+        "description": "Set the branding fields of the consent screen. Google REQUIRES home page, privacy policy, terms of service and a developer contact email before an app can be published, and those URLs must be publicly reachable (a 404 is rejected). Pass only the fields you want to change; with no fields it returns the current values instead.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "project": { "type": "string", "description": "GCP project ID" },
+            "homepage": { "type": "string", "description": "Public home page URL" },
+            "privacy": { "type": "string", "description": "Public privacy policy URL" },
+            "terms": { "type": "string", "description": "Public terms of service URL" },
+            "contact": { "type": "string", "description": "Developer contact email" }
+          },
+          "required": ["project"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "gauth_publish",
+        "description": "Publish the OAuth app so it leaves Testing mode and is no longer capped at 100 users over its entire lifetime. Fails with blocked=true when the branding page is incomplete; that is a server-side precondition, so do not retry it — complete the branding first.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "project": { "type": "string", "description": "GCP project ID" }
+          },
+          "required": ["project"]
+        }
+      }
+    }
+  ],
+  "anthropic": [
+    {
+      "name": "gauth_diagnose",
+      "description": "Full health check of a Google OAuth setup: publish state, branding gaps, test users, and a specific fix for every blocker found. Call this FIRST for any 'Google login not working' issue. Returns blockers[] with stable codes: NO_TEST_USERS, NOT_PUBLISHED, BRANDING_URLS_MISSING, BRANDING_CONTACT_MISSING.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project": { "type": "string", "description": "GCP project ID, e.g. my-app-492517" }
+        },
+        "required": ["project"]
+      }
+    },
+    {
+      "name": "gauth_create_client",
+      "description": "Create a Google OAuth 2.0 Web Client (client ID and secret), configuring the consent screen if it does not exist yet. May take up to 3 minutes on first run while the user signs in to Google.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project": { "type": "string", "description": "GCP project ID. Must already exist." },
+          "name": { "type": "string", "description": "Human-readable app name shown on the consent screen" },
+          "redirect_uri": { "type": "string", "description": "OAuth redirect URI. For Auth.js v5: https://<domain>/api/auth/callback/google" },
+          "email": { "type": "string", "description": "Support email shown on the consent screen" }
+        },
+        "required": ["project", "name", "redirect_uri", "email"]
+      }
+    },
+    {
+      "name": "gauth_renew_secret",
+      "description": "Add a new client secret to an existing OAuth client. The previous secret keeps working until deleted in the console, so there is no downtime.",
+      "input_schema": {
+        "type": "object",
+        "properties": { "project": { "type": "string", "description": "GCP project ID" } },
+        "required": ["project"]
+      }
+    },
+    {
+      "name": "gauth_publish_status",
+      "description": "Read whether the OAuth app is in Testing or Production, the test-user limit, and whether the Publish button is currently enabled.",
+      "input_schema": {
+        "type": "object",
+        "properties": { "project": { "type": "string", "description": "GCP project ID" } },
+        "required": ["project"]
+      }
+    },
+    {
+      "name": "gauth_list_test_users",
+      "description": "List the email addresses currently allowed to sign in while the app is in Testing mode. An empty list means every login is rejected before it reaches the application.",
+      "input_schema": {
+        "type": "object",
+        "properties": { "project": { "type": "string", "description": "GCP project ID" } },
+        "required": ["project"]
+      }
+    },
+    {
+      "name": "gauth_add_test_users",
+      "description": "Add email addresses to the consent screen's test-user allowlist. REQUIRED while the app is in Testing mode: with zero test users, Google rejects every login before the request reaches the application, leaving the application logs empty.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project": { "type": "string", "description": "GCP project ID" },
+          "emails": { "type": "array", "items": { "type": "string" }, "description": "Email addresses to allow" }
+        },
+        "required": ["project", "emails"]
+      }
+    },
+    {
+      "name": "gauth_remove_test_users",
+      "description": "Remove email addresses from the consent screen's test-user allowlist.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project": { "type": "string", "description": "GCP project ID" },
+          "emails": { "type": "array", "items": { "type": "string" }, "description": "Email addresses to remove" }
+        },
+        "required": ["project", "emails"]
+      }
+    },
+    {
+      "name": "gauth_fill_branding",
+      "description": "Set the branding fields of the consent screen. Google REQUIRES home page, privacy policy, terms of service and a developer contact email before an app can be published, and those URLs must be publicly reachable. Pass only the fields you want to change; with no fields it returns the current values instead.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project": { "type": "string", "description": "GCP project ID" },
+          "homepage": { "type": "string", "description": "Public home page URL" },
+          "privacy": { "type": "string", "description": "Public privacy policy URL" },
+          "terms": { "type": "string", "description": "Public terms of service URL" },
+          "contact": { "type": "string", "description": "Developer contact email" }
+        },
+        "required": ["project"]
+      }
+    },
+    {
+      "name": "gauth_publish",
+      "description": "Publish the OAuth app so it leaves Testing mode and is no longer capped at 100 users over its entire lifetime. Fails with blocked=true when the branding page is incomplete; do not retry it.",
+      "input_schema": {
+        "type": "object",
+        "properties": { "project": { "type": "string", "description": "GCP project ID" } },
+        "required": ["project"]
+      }
+    }
+  ]
+}
