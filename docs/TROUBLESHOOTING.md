@@ -128,5 +128,14 @@ The traps that cost the most time, in order:
 6. **Scope your CSS.** A rule like `.pane::after { position: absolute; inset: 0 }` applies to
    every element with that class; if one of them is not `position: relative`, the overlay sizes
    itself against a distant ancestor and covers the whole page.
+7. **Chip-list fields do not store their value in `el.value`.** The developer contact emails and
+   the test-user list are both `mat-chip-grid`: the value only becomes a chip when you press
+   Enter, and afterwards the input is **deliberately empty**. Reading `el.value` makes a filled
+   field look empty, which produces false "missing" reports, and setting `el.value` makes the
+   save silently do nothing. Type with real keyboard events (`typeIntoField`) and read the chip
+   elements, not the input.
+8. **A disabled "Save" button is not always a bug.** If nothing actually changed, Angular keeps
+   it disabled. Check whether the value you tried to write was already there before assuming the
+   write failed.
 
 The reusable pieces live in `lib/console.mjs` — read the comments there before writing new code.
