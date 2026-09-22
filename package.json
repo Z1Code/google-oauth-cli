@@ -1,6 +1,6 @@
 {
   "name": "google-oauth-cli",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Create, rotate, publish and inspect Google OAuth 2.0 credentials from the terminal by automating the Google Cloud Console with Playwright. No gcloud OAuth screen, no manual clicking.",
   "keywords": [
     "google-oauth",

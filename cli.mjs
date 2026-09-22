@@ -25,12 +25,14 @@ import {
   diagnose,
   getPublishStatus,
   getBranding,
+  listClients,
   listTestUsers,
   addTestUsers,
   removeTestUsers,
   fillBranding,
   publishApp,
 } from "./lib/consent.mjs";
+import { ensureProject } from "./lib/ensure.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -116,9 +118,11 @@ ${C.b}USO${C.r}
   gauth <comando> [opciones]
 
 ${C.b}COMANDOS${C.r}
+  ${C.b}ensure${C.r}       Deja el login FUNCIONANDO: crea lo que falte y verifica. Empeza por aca.
+  ${C.b}diagnose${C.r}     Que falta para entrar y que falta para publicar
   ${C.b}create${C.r}       Crea un cliente OAuth Web (Client ID + secret)
+  ${C.b}clients${C.r}      Lista los clientes OAuth del proyecto
   ${C.b}renew${C.r}        Agrega un secret nuevo a un cliente existente
-  ${C.b}diagnose${C.r}     Estado completo: publicacion, marca y usuarios de prueba
   ${C.b}status${C.r}       Solo el estado de publicacion
   ${C.b}branding${C.r}     Carga los datos de la marca (web, privacidad, terminos, contacto)
   ${C.b}publish${C.r}      Publica la app para salir del limite de 100 usuarios
@@ -139,6 +143,11 @@ ${C.b}CREAR UN CLIENTE${C.r}
                --email soporte@midominio.com
 
 ${C.b}PASOS TIPICOS${C.r}
+  ${C.b}gauth ensure${C.r} --project <id> --name "Mi App" \\
+              --redirect https://x.com/api/auth/callback/google \\
+              --email soporte@x.com --emails "cliente@x.com"
+  ${C.dim}# idempotente: repetilo las veces que quieras, solo hace lo que falta${C.r}
+
   gauth diagnose --project <id>          ${C.dim}# que falta para que el login funcione${C.r}
   gauth test-users add --project <id> --emails "a@x.com,b@y.com"
   gauth branding --project <id> --homepage https://x.com \\
@@ -231,31 +240,45 @@ async function cmdStatus() {
 
 async function cmdDiagnose() {
   const project = requireProject();
-  const payload = await diagnose(ctx());
+  const payload = await diagnose({ ...ctx(), redirect: flags.redirect ?? flags.redirectUri });
+
   emit(payload, {
     human: (p) => {
       console.log(`\n${C.b}${p.project}${C.r}`);
       console.log(
         `Estado: ${p.publish.publishingStatus === "production" ? C.ok + "Produccion" : C.warn + "Prueba"}${C.r}` +
-          `   Usuarios de prueba: ${p.testUsersCount}`,
+          `   Usuarios de prueba: ${p.testUsersCount}` +
+          `   Clientes OAuth: ${p.clients.length}`,
       );
-
-      const empty = p.branding.fields.filter((f) => f.empty);
-      if (empty.length) {
-        console.log(`\n${C.b}Campos de marca vacios${C.r}`);
-        for (const f of empty) console.log(`  ${C.warn}!${C.r} ${f.label}`);
+      if (!p.clients.length) {
+        console.log(`\n${C.bad}No hay ningun cliente OAuth.${C.r} Sin Client ID no hay login posible.`);
       }
 
-      if (!p.blockers.length) {
-        console.log(`\n${C.ok}Sin bloqueos: el login deberia funcionar.${C.r}\n`);
-        return;
+      const deLogin = p.blockers.filter((b) => b.level === "login");
+      const dePublicar = p.blockers.filter((b) => b.level !== "login");
+
+      if (!deLogin.length) {
+        console.log(`\n${C.ok}El login funciona: no falta nada para que alguien pueda entrar.${C.r}`);
+      } else {
+        console.log(`\n${C.bad}El login NO funciona todavia${C.r}`);
+        for (const b of deLogin) {
+          console.log(`\n  ${C.bad}${b.code}${C.r}`);
+          console.log(`  ${b.detail}`);
+          console.log(`  ${C.dim}→ ${b.fix}${C.r}`);
+        }
       }
 
-      console.log(`\n${C.b}Bloqueos${C.r}`);
-      for (const b of p.blockers) {
-        console.log(`\n  ${C.bad}${b.code}${C.r}`);
-        console.log(`  ${b.detail}`);
-        console.log(`  ${C.dim}→ ${b.fix}${C.r}`);
+      if (dePublicar.length) {
+        console.log(`\n${C.b}Para publicar (el login no depende de esto)${C.r}`);
+        for (const b of dePublicar) {
+          console.log(`  ${C.warn}!${C.r} ${b.code}`);
+          console.log(`    ${C.dim}${b.detail}${C.r}`);
+          console.log(`    ${C.dim}→ ${b.fix}${C.r}`);
+        }
+      }
+
+      if (deLogin.length || dePublicar.length) {
+        console.log(`\n${C.dim}Atajo: 'gauth ensure' resuelve lo del login solo.${C.r}`);
       }
       console.log();
     },
@@ -391,12 +414,111 @@ async function cmdKill() {
   });
 }
 
+/**
+ * Crea un cliente OAuth y devuelve `{clientId, clientSecret}`.
+ *
+ * Se ejecuta como proceso aparte a proposito: `lib/oauth-client.mjs` arranca el flujo al
+ * importarse. A diferencia de `runLegacy`, no corta el proceso: lo usa `ensure`, que tiene
+ * que seguir con los pasos siguientes.
+ */
+function crearCliente({ project, name, redirect, email }) {
+  const script = path.join(HERE, "lib", "oauth-client.mjs");
+  const res = spawnSync(process.execPath, [script, "create", project, name, redirect, email], {
+    encoding: "utf8",
+    stdio: ["inherit", "pipe", "inherit"],
+  });
+
+  if (res.error) throw new Error(`No pude ejecutar ${script}: ${res.error.message}`);
+
+  const raw = (res.stdout ?? "").trim();
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new Error(`La creacion no devolvio JSON valido: ${raw.slice(0, 300)}`);
+  }
+}
+
+/** Deja el login funcionando. Ver `lib/ensure.mjs` para el por que del bucle. */
+async function cmdEnsure() {
+  const project = requireProject();
+
+  const payload = await ensureProject({
+    ...ctx(),
+    project,
+    name: flags.name ?? flags.appName,
+    redirect: flags.redirect ?? flags.redirectUri,
+    email: flags.email ?? flags.supportEmail,
+    emails: flags.emails ?? flags.email,
+    crearCliente,
+  });
+
+  emit(payload, {
+    human: (p) => {
+      console.log(`\n${C.b}${p.project}${C.r} — ${p.vueltas} vuelta(s)\n`);
+
+      for (const paso of p.pasos ?? []) {
+        const r = paso.resultado ?? {};
+        const bien = r.ok !== false && !r.error;
+        console.log(`  ${bien ? C.ok + "OK   " + C.r : C.bad + "FALLO" + C.r}  ${paso.accion}`);
+        if (r.error) console.log(`        ${C.dim}${r.error}${C.r}`);
+        if (r.countBefore !== undefined && r.countAfter !== undefined) {
+          console.log(`        ${C.dim}usuarios de prueba: ${r.countBefore} -> ${r.countAfter}${C.r}`);
+        }
+      }
+
+      if (p.ok) {
+        console.log(`\n${C.ok}LISTO${C.r} — ${p.motivo}`);
+        if (p.credenciales) {
+          console.log(`\n  ${C.b}AUTH_GOOGLE_ID${C.r}=${p.credenciales.clientId}`);
+          console.log(`  ${C.b}AUTH_GOOGLE_SECRET${C.r}=${p.credenciales.clientSecret}`);
+        }
+        console.log(`  Usuarios de prueba: ${p.usuariosDePrueba}`);
+
+        if (p.pendienteParaPublicar?.length) {
+          console.log(`\n${C.b}El login ya funciona. Para PUBLICAR todavia falta:${C.r}`);
+          for (const b of p.pendienteParaPublicar) {
+            console.log(`  ${C.warn}!${C.r} ${b.code}: ${b.fix}`);
+          }
+        }
+        console.log();
+        return;
+      }
+
+      console.log(`\n${C.bad}TRABADO${C.r} — ${p.motivo}`);
+      for (const b of p.bloqueos ?? []) console.log(`  ${C.warn}!${C.r} ${b.code}: ${b.detail}`);
+      if (p.faltanDatos?.length) console.log(`\n  Pasale: ${p.faltanDatos.join(" ")}`);
+      console.log();
+    },
+  });
+}
+
+/** Lista los clientes OAuth. Sin cliente no hay login posible. */
+async function cmdClients() {
+  const project = requireProject();
+  const clients = await listClients(ctx());
+
+  emit({ ok: true, project, clients, count: clients.length }, {
+    human: (p) => {
+      console.log(`\n${C.b}Clientes OAuth de ${p.project}${C.r} (${p.count})\n`);
+      if (!p.count) {
+        console.log(`  ${C.warn}(ninguno)${C.r}  Sin cliente no hay Client ID con el que entrar.`);
+        console.log(`  ${C.dim}Crea uno con: gauth create --project ${p.project} ...${C.r}\n`);
+        return;
+      }
+      for (const c of p.clients) console.log(`  ${c.clientId}\n    ${C.dim}${c.nombre}${C.r}`);
+      console.log();
+    },
+  });
+}
+
 // ─── Dispatch ─────────────────────────────────────────────────────────────────
 
 const COMMANDS = {
+  ensure: cmdEnsure,
   create: cmdCreate,
   renew: cmdRenew,
   diagnose: cmdDiagnose,
+  clients: cmdClients,
   status: cmdStatus,
   branding: cmdBranding,
   publish: cmdPublish,
